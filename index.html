@@ -1555,6 +1555,26 @@
 }
 </style>
 
+
+<style id="safari-viewport-fit">
+/* 元の寸法で収まるときは等倍。横画面で高さが不足するときだけ全体を縮小。 */
+.viewport-fit { display: contents; }
+@media (max-width: 900px) and (orientation: landscape) {
+  body { height: var(--visible-height, 100dvh) !important; }
+  .viewport-fit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 0 0 auto;
+    transform: scale(var(--fit-scale, 1));
+    transform-origin: center center;
+  }
+  .viewport-fit > .container { flex-shrink: 0 !important; }
+  .viewport-fit > .history-inline { flex: 0 0 auto !important; }
+}
+</style>
+
 </head>
 <body>
 
@@ -1568,6 +1588,7 @@
 
 
 
+  <div class="viewport-fit">
   <div class="container">
     <h1 id="pop-logo" class="pop-logo" aria-label="エモパレビンゴ">
       <span style="--glow: var(--neon-pink); animation-delay: 0s;">エ</span>
@@ -1608,6 +1629,8 @@
   <div class="history-inline" aria-label="今まで出た数字">
     <div id="history-list" class="history-list"></div>
   </div>
+
+  </div><!-- .viewport-fit -->
 
   <script>
     let numbers = Array.from({length: 75}, (_, i) => i + 1);
@@ -2169,6 +2192,59 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 
+
+
+<script id="safari-viewport-fit-script">
+(() => {
+  const frame = document.querySelector('.viewport-fit');
+  const panel = frame.querySelector('.container');
+  const controls = panel.querySelector('.control-section');
+  const history = document.getElementById('history-list');
+  const landscape = matchMedia('(max-width: 900px) and (orientation: landscape)');
+  let pending = false;
+
+  function fit() {
+    pending = false;
+    if (!landscape.matches) {
+      document.body.style.removeProperty('--visible-height');
+      frame.style.removeProperty('--fit-scale');
+      panel.style.removeProperty('height');
+      return;
+    }
+    // ピンチズームには追従せず、Safariのツールバーによる高さ変更に追従。
+    const viewport = window.visualViewport;
+    if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+    const height = Math.min(window.innerHeight, viewport ? viewport.height : window.innerHeight);
+    if (height <= 0) return;
+    document.body.style.setProperty('--visible-height', height + 'px');
+    frame.style.setProperty('--fit-scale', '1');
+    panel.style.setProperty('height', (height * 0.7 + 35) + 'px', 'important');
+
+    // 固定高さの中身を切らない。元の枠が十分な場合は高さを変えない。
+    const panelRect = panel.getBoundingClientRect();
+    const style = getComputedStyle(panel);
+    const required = controls.getBoundingClientRect().bottom - panelRect.top
+      + parseFloat(style.paddingBottom) + parseFloat(style.borderBottomWidth);
+    const naturalHeight = Math.max(panelRect.height, Math.ceil(required));
+    panel.style.setProperty('height', naturalHeight + 'px', 'important');
+
+    // 履歴8個も含めて上下6pxの余白内に収める（拡大はしない）。
+    const scale = Math.min(1, Math.max(1, height - 12) / frame.getBoundingClientRect().height);
+    frame.style.setProperty('--fit-scale', String(scale));
+  }
+  function scheduleFit() {
+    if (!pending) { pending = true; requestAnimationFrame(fit); }
+  }
+  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('orientationchange', scheduleFit);
+  window.addEventListener('pageshow', scheduleFit);
+  window.addEventListener('load', scheduleFit);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleFit);
+  if (document.fonts) document.fonts.ready.then(scheduleFit);
+  new MutationObserver(scheduleFit).observe(history, { childList: true });
+  scheduleFit();
+})();
+</script>
 
 </body>
 </html>
